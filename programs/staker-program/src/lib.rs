@@ -19,10 +19,11 @@ pub mod staker_program {
         ctx.accounts.stake_state.vault_nonce = args.vault_nonce;
         ctx.accounts.stake_state.mint_auth_nonce = args.mint_auth_nonce;
         ctx.accounts.stake_state.vault_auth_nonce = args.vault_auth_nonce;
+        ctx.accounts.stake_state.pos_mint_nonce = args.pos_mint_nonce;
         Ok(())
     }
 
-    pub fn register_stake(ctx: Context<RegisterStake>) -> ProgramResult {
+    pub fn register_stake(_ctx: Context<RegisterStake>, _args: RegisterStakeArgs) -> ProgramResult {
         Ok(())
     }
 
@@ -44,9 +45,6 @@ pub mod staker_program {
     }
 
     pub fn unstake(ctx: Context<Unstake>, args: UnstakeArgs) -> ProgramResult {
-        let mint_seeds = mint_authority! {
-            bump = ctx.accounts.stake_state.mint_auth_nonce
-        };
         let vault_seeds = vault_authority! {
             bump = ctx.accounts.stake_state.vault_auth_nonce
         };
@@ -77,6 +75,13 @@ pub struct Initialize<'info> {
     pub rent: Sysvar<'info, Rent>,
     pub xtoken_mint: Account<'info, Mint>,
     #[account(
+        init,
+        seeds = [STAKE_STATE_SEED.as_bytes().as_ref(), xtoken_mint.key().as_ref()],
+        bump = args.stake_state_nonce,
+        payer = admin,
+    )]
+    pub stake_state: Box<Account<'info, StakeState>>,
+    #[account(
         seeds = [MINT_AUTH_SEED.as_bytes().as_ref()],
         bump = args.mint_auth_nonce,
     )]
@@ -90,13 +95,6 @@ pub struct Initialize<'info> {
         payer = admin,
     )]
     pub pos_mint: Account<'info, Mint>,
-    #[account(
-        init,
-        seeds = [STAKE_STATE_SEED.as_bytes().as_ref(), xtoken_mint.key().as_ref()],
-        bump = args.stake_state_nonce,
-        payer = admin,
-    )]
-    pub stake_state: Box<Account<'info, StakeState>>,
     #[account(
         seeds = [VAULT_AUTH_SEED.as_bytes().as_ref()],
         bump = args.vault_auth_nonce,
@@ -114,16 +112,12 @@ pub struct Initialize<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(args: RegisterStakeArgs)]
 pub struct RegisterStake<'info> {
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
     pub rent: Sysvar<'info, Rent>,
-    #[account(
-        mut,
-        seeds = [STAKE_STATE_SEED.as_bytes().as_ref(), stake_state.xtoken_mint.as_ref()],
-        bump = stake_state.stake_state_nonce,
-    )]
-    pub stake_state: Account<'info, StakeState>,
+    pub stake_state: Box<Account<'info, StakeState>>,
     #[account(mut)]
     pub user_authority: Signer<'info>,
     #[account(
@@ -134,17 +128,23 @@ pub struct RegisterStake<'info> {
         init,
         token::mint = xtoken_mint,
         token::authority = user_authority,
+        seeds = [xtoken_mint.key().as_ref(), user_authority.key().as_ref()],
+        bump = args.user_xtoken_account_nonce,
         payer = user_authority,
     )]
     pub user_xtoken_account: Account<'info, TokenAccount>,
     #[account( 
         constraint = pos_mint.key() == stake_state.pos_mint @ ErrorCode::PosMintMismatch,
+        seeds = [POS_MINT_SEED.as_bytes().as_ref(), stake_state.key().as_ref()],
+        bump = stake_state.pos_mint_nonce,
     )]
     pub pos_mint: Box<Account<'info, Mint>>,
     #[account(
         init,
         token::mint = pos_mint,
         token::authority = user_authority,
+        seeds = [pos_mint.key().as_ref(), user_authority.key().as_ref()],
+        bump = args.user_pos_account_nonce,
         payer = user_authority,
     )]
     pub user_pos_account: Account<'info, TokenAccount>,
@@ -154,12 +154,7 @@ pub struct RegisterStake<'info> {
 #[instruction(args: StakeArgs)]
 pub struct Stake<'info> {
     pub token_program: Program<'info, Token>,
-    #[account(
-        mut,
-        seeds = [STAKE_STATE_SEED.as_bytes().as_ref(), stake_state.xtoken_mint.as_ref()],
-        bump = stake_state.stake_state_nonce,
-    )]
-    pub stake_state: Account<'info, StakeState>,
+    pub stake_state: Box<Account<'info, StakeState>>,
     #[account(mut)]
     pub user_authority: Signer<'info>,
     #[account(
@@ -174,7 +169,10 @@ pub struct Stake<'info> {
     )]
     pub user_xtoken_account: Account<'info, TokenAccount>,
     #[account(
+        mut,
         constraint = pos_mint.key() == stake_state.pos_mint @ ErrorCode::PosMintMismatch,
+        seeds = [POS_MINT_SEED.as_bytes().as_ref(), stake_state.key().as_ref()],
+        bump = stake_state.pos_mint_nonce,
     )]
     pub pos_mint: Box<Account<'info, Mint>>,
     #[account(
@@ -200,12 +198,7 @@ pub struct Stake<'info> {
 #[instruction(args: UnstakeArgs)]
 pub struct Unstake<'info> {
     pub token_program: Program<'info, Token>,
-    #[account(
-        mut,
-        seeds = [STAKE_STATE_SEED.as_bytes().as_ref(), stake_state.xtoken_mint.as_ref()],
-        bump = stake_state.stake_state_nonce,
-    )]
-    pub stake_state: Account<'info, StakeState>,
+    pub stake_state: Box<Account<'info, StakeState>>,
     #[account(mut)]
     pub user_authority: Signer<'info>,
     #[account(
@@ -219,7 +212,10 @@ pub struct Unstake<'info> {
     )]
     pub user_xtoken_account: Account<'info, TokenAccount>,
     #[account(
+        mut,
         constraint = pos_mint.key() == stake_state.pos_mint @ ErrorCode::PosMintMismatch,
+        seeds = [POS_MINT_SEED.as_bytes().as_ref(), stake_state.key().as_ref()],
+        bump = stake_state.pos_mint_nonce,
     )]
     pub pos_mint: Box<Account<'info, Mint>>,
     #[account(
@@ -231,6 +227,7 @@ pub struct Unstake<'info> {
     pub user_pos_account: Account<'info, TokenAccount>,
     #[account(
         mut,
+        constraint = vault.owner == vault_authority.key() @ ErrorCode::VaultAuthMismatch,
         seeds = [VAULT_SEED.as_bytes().as_ref(), stake_state.key().as_ref()],
         bump = stake_state.vault_nonce,
     )]
@@ -252,6 +249,12 @@ pub struct InitializeArgs {
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
+pub struct RegisterStakeArgs {
+    pub user_xtoken_account_nonce: u8,
+    pub user_pos_account_nonce: u8,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct StakeArgs {
     pub amount: u64,
 }
@@ -266,7 +269,7 @@ impl<'info> Stake<'info> {
         let cpi_accounts = MintTo {
             mint: self.pos_mint.to_account_info().clone(),
             to: self.user_pos_account.to_account_info().clone(),
-            authority: self.mint_authority.clone(),
+            authority: self.mint_authority.to_account_info().clone(),
         };
         CpiContext::new(self.token_program.to_account_info().clone(), cpi_accounts)
     }
@@ -274,7 +277,7 @@ impl<'info> Stake<'info> {
     pub fn into_transfer_context(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
         let cpi_accounts = Transfer {
             from: self.user_xtoken_account.to_account_info().clone(),
-            to: self.vault.to_account_info(),
+            to: self.vault.to_account_info().clone(),
             authority: self.user_authority.to_account_info().clone(),
         };
         CpiContext::new(self.token_program.to_account_info().clone(), cpi_accounts)
@@ -293,9 +296,9 @@ impl<'info> Unstake<'info> {
 
     pub fn into_transfer_context(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
         let cpi_accounts = Transfer {
-            from: self.user_xtoken_account.to_account_info().clone(),
-            to: self.vault.to_account_info(),
-            authority: self.vault_authority.clone(),
+            from: self.vault.to_account_info().clone(),
+            to: self.user_xtoken_account.to_account_info().clone(),
+            authority: self.vault_authority.to_account_info().clone(),
         };
         CpiContext::new(self.token_program.to_account_info().clone(), cpi_accounts)
     }
@@ -325,6 +328,7 @@ pub struct StakeState {
     pub vault_nonce: u8,
     pub mint_auth_nonce: u8,
     pub vault_auth_nonce: u8,
+    pub pos_mint_nonce: u8,
 }
 
 #[error]
@@ -345,4 +349,6 @@ pub enum ErrorCode {
     PosOwnerMismatch,
     #[msg("Pos Mint mismatch")]
     PosMintMismatch,
+    #[msg("Vault auth mismatch")]
+    VaultAuthMismatch,
 }
