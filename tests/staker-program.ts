@@ -7,6 +7,7 @@ import {
   SYSVAR_RENT_PUBKEY,
 } from "@solana/web3.js";
 import { Token, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { expect } from "chai";
 import { StakerProgram } from '../target/types/staker_program';
 import * as utils from "./utils";
 
@@ -196,6 +197,10 @@ describe('staker-program', () => {
       [tokenMintAuthority],
       TEST_AMOUNT
     );
+
+    const balanceXtokenBefore = parseInt((await provider.connection.getTokenAccountBalance(userXtokenAccount)).value.amount);
+    const balancePosBefore = parseInt((await provider.connection.getTokenAccountBalance(userPosAccount)).value.amount);
+
     const tx = await program.rpc.stake({
       amount: new anchor.BN(TEST_AMOUNT)
     }, {
@@ -212,10 +217,18 @@ describe('staker-program', () => {
       },
       signers: [userAuthority]
     });
+    const balanceXtokenAfter = parseInt((await provider.connection.getTokenAccountBalance(userXtokenAccount)).value.amount);
+    const balancePosAfter = parseInt((await provider.connection.getTokenAccountBalance(userPosAccount)).value.amount);
+    console.log({ balanceXtokenBefore, balancePosBefore, balanceXtokenAfter, balancePosAfter });
     PRINT_LOG && console.log("Your transaction signature", tx);
+
+    expect(balanceXtokenBefore - balanceXtokenAfter).to.equal(TEST_AMOUNT);
+    expect(balancePosAfter - balancePosBefore).to.equal(TEST_AMOUNT);
   });
 
   it('Unstake', async () => {
+    const balanceXtokenBefore = parseInt((await provider.connection.getTokenAccountBalance(userXtokenAccount)).value.amount);
+    const balancePosBefore = parseInt((await provider.connection.getTokenAccountBalance(userPosAccount)).value.amount);
     const tx = await program.rpc.unstake({
       amount: new anchor.BN(TEST_AMOUNT)
     }, {
@@ -232,6 +245,12 @@ describe('staker-program', () => {
       },
       signers: [userAuthority]
     });
+    const balanceXtokenAfter = parseInt((await provider.connection.getTokenAccountBalance(userXtokenAccount)).value.amount);
+    const balancePosAfter = parseInt((await provider.connection.getTokenAccountBalance(userPosAccount)).value.amount);
+    console.log({ balanceXtokenBefore, balancePosBefore, balanceXtokenAfter, balancePosAfter });
     PRINT_LOG && console.log("Your transaction signature", tx);
+
+    expect(balanceXtokenAfter - balanceXtokenBefore).to.equal(TEST_AMOUNT);
+    expect(balancePosBefore - balancePosAfter).to.equal(TEST_AMOUNT);
   });
 });
