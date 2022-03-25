@@ -6,10 +6,11 @@ import {
   SystemProgram,
   SYSVAR_RENT_PUBKEY,
 } from "@solana/web3.js";
-import { Token, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { createMint, mintTo } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { expect } from "chai";
 import { StakerProgram } from '../target/types/staker_program';
-import * as utils from "./utils";
+// import * as utils from "./utils";
 
 const PRINT_LOG: boolean = false;
 
@@ -31,7 +32,7 @@ describe('staker-program', () => {
   const tokenMintAuthority = Keypair.generate();
   const mintKeypair = Keypair.generate();
 
-  let xtokenMint: Token;
+  let xtokenMint: PublicKey;
   let vault: PublicKey;
   let vaultAuthority: PublicKey;
   let stakeState: PublicKey;
@@ -54,10 +55,10 @@ describe('staker-program', () => {
       "confirmed"
     );
 
-    xtokenMint = await utils.createMint(
+    xtokenMint = await createMint(
       provider.connection,
-      mintKeypair,
-      (provider.wallet as anchor.Wallet).payer,
+      admin,
+      tokenMintAuthority.publicKey,
       tokenMintAuthority.publicKey,
       9
     );
@@ -72,7 +73,7 @@ describe('staker-program', () => {
       await anchor.web3.PublicKey.findProgramAddress(
         [
           Buffer.from(anchor.utils.bytes.utf8.encode(STAKE_STATE_SEED)),
-          xtokenMint.publicKey.toBuffer()
+          xtokenMint.toBuffer()
         ],
         program.programId
       );
@@ -114,7 +115,7 @@ describe('staker-program', () => {
         systemProgram: SystemProgram.programId,
         tokenProgram: TOKEN_PROGRAM_ID,
         rent: SYSVAR_RENT_PUBKEY,
-        xtokenMint: xtokenMint.publicKey,
+        xtokenMint: xtokenMint,
         mintAuthority,
         posMint,
         stakeState,
@@ -144,7 +145,7 @@ describe('staker-program', () => {
     let [_userXtokenAccount, userXtokenAccountNonce] = 
       await anchor.web3.PublicKey.findProgramAddress(
         [
-          xtokenMint.publicKey.toBuffer(),
+          xtokenMint.toBuffer(),
           userAuthority.publicKey.toBuffer()
         ],
         program.programId
@@ -161,7 +162,7 @@ describe('staker-program', () => {
     userPosAccount = _userPosAccount;
 
     PRINT_LOG && console.log({
-      xtokenMint: xtokenMint.publicKey.toBase58(),
+      xtokenMint: xtokenMint.toBase58(),
       userXtokenAccount: userXtokenAccount.toBase58(),
       userPosAccount: userPosAccount.toBase58(),
       vault: vault.toBase58(),
@@ -180,7 +181,7 @@ describe('staker-program', () => {
         rent: SYSVAR_RENT_PUBKEY,
         stakeState,
         userAuthority: userAuthority.publicKey,
-        xtokenMint: xtokenMint.publicKey,
+        xtokenMint: xtokenMint,
         userXtokenAccount,
         posMint,
         userPosAccount
@@ -191,10 +192,12 @@ describe('staker-program', () => {
   });
 
   it('Stake', async () => {
-    await xtokenMint.mintTo(
+    await mintTo(
+      provider.connection,
+      admin,
+      xtokenMint,
       userXtokenAccount,
-      tokenMintAuthority.publicKey,
-      [tokenMintAuthority],
+      tokenMintAuthority,
       TEST_AMOUNT
     );
 
@@ -208,7 +211,7 @@ describe('staker-program', () => {
         tokenProgram: TOKEN_PROGRAM_ID,
         stakeState,
         userAuthority: userAuthority.publicKey,
-        xtokenMint: xtokenMint.publicKey,
+        xtokenMint: xtokenMint,
         userXtokenAccount,
         posMint,
         userPosAccount,
@@ -236,7 +239,7 @@ describe('staker-program', () => {
         tokenProgram: TOKEN_PROGRAM_ID,
         stakeState,
         userAuthority: userAuthority.publicKey,
-        xtokenMint: xtokenMint.publicKey,
+        xtokenMint: xtokenMint,
         userXtokenAccount,
         posMint,
         userPosAccount,
